@@ -1,0 +1,252 @@
+/* ================= RESET ================= */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+/* ================= THEME ================= */
+:root {
+  --bg1: #0b1020;
+  --bg2: #020617;
+
+  --card: rgba(255, 255, 255, 0.10);
+  --border: rgba(255, 255, 255, 0.18);
+  --text: rgba(255, 255, 255, 0.94);
+  --muted: rgba(255, 255, 255, 0.65);
+
+  --primary: rgba(99, 102, 241, 0.42);
+  --primary-border: rgba(99, 102, 241, 0.75);
+
+  --danger: rgba(239, 68, 68, 0.75);
+
+  --radius: 18px;
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Arial, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 20% 10%, rgba(99,102,241,0.35), transparent 55%),
+    radial-gradient(900px 500px at 80% 20%, rgba(34,197,94,0.18), transparent 55%),
+    radial-gradient(800px 500px at 50% 90%, rgba(236,72,153,0.14), transparent 55%),
+    linear-gradient(135deg, var(--bg1), var(--bg2));
+}
+
+/* ================= SHARED ================= */
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.20);
+}
+
+.input::placeholder {
+  color: transparent;
+}
+
+/* buttons */
+.btn {
+  padding: 11px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.06s ease;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: var(--primary);
+  border-color: var(--primary-border);
+}
+
+.btnGhost {
+  background: transparent;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  padding: 16px;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.error {
+  border: 1px solid var(--danger);
+  background: rgba(239, 68, 68, 0.14);
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 14px;
+}
+
+/* ================= AUTH (GUARANTEED CENTER) ================= */
+
+.auth-page {
+  /* this makes centering unbeatable */
+  min-height: 100vh;
+  width: 100vw;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  text-align: center;
+  display: grid;
+  gap: 12px;
+}
+
+.auth-card h1 { margin: 0; font-size: 40px; }
+.auth-card p { margin: 0 0 6px; color: rgba(255,255,255,0.65); }
+
+/* ================= APP ================= */
+.app-page {
+  min-height: 100vh;
+  padding: 28px 16px;
+}
+
+.app-shell {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+/* header */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.title {
+  margin: 0;
+  font-size: 44px;
+  letter-spacing: 0.3px;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* grid layout */
+.grid2 {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .grid2 {
+    grid-template-columns: 420px 1fr;
+    align-items: start;
+  }
+}
+
+/* cards */
+.cardTitle {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: rgba(255,255,255,0.90);
+}
+
+/* list */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.checkRow span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.done {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+/* empty state */
+.empty {
+  padding: 18px 0 6px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.empty strong {
+  color: var(--text);
+}

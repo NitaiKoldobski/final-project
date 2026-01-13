@@ -1,0 +1,56 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: todo-backend-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: todo-backend.rules
+      rules:
+        # Backend scrape target is down
+        - alert: TodoBackendMetricsDown
+          expr: up{job="backend"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: backend
+          annotations:
+            summary: "Backend metrics target is DOWN"
+            description: "Prometheus cannot scrape backend /metrics (job=backend) for more than 1 minute."
+
+        # Backend deployment has fewer available replicas than desired
+        - alert: TodoBackendReplicasNotReady
+          expr: kube_deployment_status_replicas_available{namespace="todo", deployment="backend"}
+                < kube_deployment_spec_replicas{namespace="todo", deployment="backend"}
+          for: 2m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend replicas not ready"
+            description: "backend available replicas are lower than desired for more than 2 minutes."
+
+        # Pods restarting a lot (often means crash/bugs)
+        - alert: TodoBackendHighRestartRate
+          expr: sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="todo", container="backend"}[10m])) > 2
+          for: 0m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend pod is restarting"
+            description: "Pod {{ $labels.pod }} restarted more than 2 times in the last 10 minutes."
+
+        # HPA is at max (means it wants to scale but can’t)
+        - alert: TodoBackendHpaMaxedOut
+          expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="todo", horizontalpodautoscaler="backend-hpa"}
+                >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="todo", horizontalpodautoscaler="backend-hpa"}
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend HPA is maxed out"
+            description: "backend-hpa is at max replicas for 5 minutes. Consider raising maxReplicas or optimizing."

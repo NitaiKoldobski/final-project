@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: todo-app-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring   # IMPORTANT: must match your Prometheus rule selector
+spec:
+  groups:
+    - name: todo.backend.rules
+      rules:
+        # 1) Deployment not meeting desired replicas
+        - alert: BackendReplicasMissing
+          expr: |
+            kube_deployment_status_replicas_available{namespace="todo", deployment="backend"}
+            <
+            kube_deployment_spec_replicas{namespace="todo", deployment="backend"}
+          for: 2m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend replicas missing"
+            description: "Available replicas are lower than desired for 2 minutes."
+
+        # 2) Pod restarting too much
+        - alert: BackendPodRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="todo", container="backend"}[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend pod restarted"
+            description: "A backend container restarted within the last 10 minutes."
+
+        # 3) High CPU (cores) - tune threshold if needed
+        - alert: BackendHighCPU
+          expr: |
+            sum by (pod) (
+              rate(container_cpu_usage_seconds_total{namespace="todo", container="backend"}[5m])
+            ) > 0.35
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend high CPU"
+            description: "Backend pod CPU > 0.35 cores for 5 minutes."
+
+        # 4) High Memory (MiB) - tune threshold if needed
+        - alert: BackendHighMemory
+          expr: |
+            (
+              sum by (pod) (container_memory_working_set_bytes{namespace="todo", container="backend"})
+              / 1024 / 1024
+            ) > 200
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend high memory"
+            description: "Backend pod memory > 200MiB for 5 minutes."
