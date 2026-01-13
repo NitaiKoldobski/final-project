@@ -4,7 +4,7 @@ pipeline {
   options {
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
-    // NOTE: no timestamps()/ansiColor()/wrap() here because your Jenkins rejects them
+    skipDefaultCheckout(true)   // IMPORTANT: prevents extra checkout in every new pod
   }
 
   parameters {
@@ -20,8 +20,6 @@ pipeline {
 
     RBAC_FILE         = 'devops-infra/kubernetes/jenkins/jenkins-deployer-rbac.yaml'
     KUSTOMIZE_OVERLAY = "devops-infra/kustomize/overlays/${params.ENV}"
-
-    PIP_DISABLE_PIP_VERSION_CHECK = '1'
   }
 
   stages {
@@ -42,6 +40,7 @@ spec:
         }
       }
       steps {
+        deleteDir()
         checkout scm
 
         script {
@@ -52,7 +51,8 @@ spec:
           echo "GIT_SHA: ${sha}"
         }
 
-        stash name: 'src', includes: '**/*', useDefaultExcludes: false
+        // DO NOT stash .git (it breaks perms + huge)
+        stash name: 'src', includes: '**/*', excludes: '.git/**', useDefaultExcludes: false
       }
     }
 
@@ -104,6 +104,8 @@ spec:
       }
 
       steps {
+        // IMPORTANT: clean workspace so unstash extracts cleanly
+        deleteDir()
         unstash 'src'
 
         script {
@@ -112,7 +114,6 @@ spec:
           echo "Using tags: num=${env.BUILD_TAG_NUM} sha=${env.GIT_SHA}"
         }
 
-        // Backend tests - use venv to avoid pip permission issues
         container('python') {
           sh """
             set -eux
@@ -126,7 +127,6 @@ spec:
           """
         }
 
-        // Frontend tests
         container('node') {
           sh """
             set -eux
@@ -138,7 +138,6 @@ spec:
           """
         }
 
-        // Build & Push images (Kaniko)
         container('kaniko') {
           sh """
             set -eux
@@ -159,14 +158,12 @@ spec:
           """
         }
 
-        // Scan images (Trivy)
         script {
           if (params.RUN_TRIVY) {
             container('trivy') {
               sh """
                 set -eux
                 trivy version
-
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${BACKEND_IMAGE}:${GIT_SHA} | tee trivy-backend.txt
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${FRONTEND_IMAGE}:${GIT_SHA} | tee trivy-frontend.txt
               """
@@ -204,6 +201,7 @@ spec:
       }
 
       steps {
+        deleteDir()
         unstash 'src'
 
         container('kubectl') {
