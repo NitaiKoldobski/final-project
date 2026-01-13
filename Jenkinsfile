@@ -64,8 +64,6 @@ apiVersion: v1
 kind: Pod
 spec:
   restartPolicy: Never
-
-  # keep shared volume writable for jenkins user without forcing everything to run as 1000
   securityContext:
     fsGroup: 1000
 
@@ -194,10 +192,12 @@ kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
   restartPolicy: Never
+  securityContext:
+    fsGroup: 1000
   containers:
     - name: kubectl
-      image: bitnami/kubectl:latest
-      command: ["sh","-c","cat"]
+      image: rancher/kubectl:v1.30.0
+      command: ["/bin/sh","-c","cat"]
       tty: true
 """
         }
@@ -231,10 +231,12 @@ kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
   restartPolicy: Never
+  securityContext:
+    fsGroup: 1000
   containers:
     - name: kubectl
-      image: bitnami/kubectl:latest
-      command: ["sh","-c","cat"]
+      image: rancher/kubectl:v1.30.0
+      command: ["/bin/sh","-c","cat"]
       tty: true
 """
         }
