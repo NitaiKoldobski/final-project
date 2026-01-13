@@ -2,12 +2,9 @@ pipeline {
   agent none
 
   options {
-    // Compatible with your Jenkins (options list shows "wrap" is valid)
-    wrap([$class: 'TimestamperBuildWrapper'])
-    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm'])
-
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
+    // NOTE: no timestamps()/ansiColor()/wrap() here because your Jenkins rejects them
   }
 
   parameters {
@@ -68,6 +65,10 @@ apiVersion: v1
 kind: Pod
 spec:
   restartPolicy: Never
+  securityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsGroup: 1000
   volumes:
     - name: docker-config
       secret:
@@ -111,7 +112,7 @@ spec:
           echo "Using tags: num=${env.BUILD_TAG_NUM} sha=${env.GIT_SHA}"
         }
 
-        // Backend tests (Python) - use venv to avoid pip permission issues
+        // Backend tests - use venv to avoid pip permission issues
         container('python') {
           sh """
             set -eux
@@ -125,7 +126,7 @@ spec:
           """
         }
 
-        // Frontend tests (Node)
+        // Frontend tests
         container('node') {
           sh """
             set -eux
@@ -252,14 +253,8 @@ spec:
   }
 
   post {
-    success {
-      echo "✅ Pipeline finished successfully"
-    }
-    failure {
-      echo "❌ Pipeline failed - check stage logs above"
-    }
-    always {
-      echo "Build URL: ${env.BUILD_URL}"
-    }
+    success { echo "✅ Pipeline finished successfully" }
+    failure { echo "❌ Pipeline failed - check stage logs above" }
+    always  { echo "Build URL: ${env.BUILD_URL}" }
   }
 }
