@@ -4,7 +4,7 @@ pipeline {
   options {
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
-    skipDefaultCheckout(true)   // IMPORTANT: prevents extra checkout in every new pod
+    skipDefaultCheckout(true)
   }
 
   parameters {
@@ -51,7 +51,6 @@ spec:
           echo "GIT_SHA: ${sha}"
         }
 
-        // DO NOT stash .git (it breaks perms + huge)
         stash name: 'src', includes: '**/*', excludes: '.git/**', useDefaultExcludes: false
       }
     }
@@ -65,14 +64,16 @@ apiVersion: v1
 kind: Pod
 spec:
   restartPolicy: Never
+
+  # keep shared volume writable for jenkins user without forcing everything to run as 1000
   securityContext:
     fsGroup: 1000
-    runAsUser: 1000
-    runAsGroup: 1000
+
   volumes:
     - name: docker-config
       secret:
         secretName: ghcr-docker-config
+
   containers:
     - name: python
       image: python:3.11-slim
@@ -88,6 +89,9 @@ spec:
       image: gcr.io/kaniko-project/executor:debug
       command: ["sh","-c","cat"]
       tty: true
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker
@@ -104,7 +108,6 @@ spec:
       }
 
       steps {
-        // IMPORTANT: clean workspace so unstash extracts cleanly
         deleteDir()
         unstash 'src'
 
