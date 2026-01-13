@@ -2,7 +2,7 @@ pipeline {
   agent none
 
   environment {
-    IMAGE = "ghcr.io/NitaiKoldobski/final-project-backend"
+    IMAGE = "ghcr.io/nitaikoldobski/final-project-backend"
     TAG   = "${env.BUILD_NUMBER}"
   }
 
