@@ -1,16 +1,11 @@
-// Jenkinsfile (Declarative Pipeline) - Kubernetes agents (kaniko + trivy + kubectl)
-// Fixes included:
-// 1) Uses ServiceAccount jenkins-deployer only where needed (Deploy stage)
-// 2) Avoids pod-level runAsUser/fsGroup that breaks Kaniko ("chown /: operation not permitted")
-// 3) Uses a Python venv to avoid pip permission issues
-// 4) Removes invalid `post { failure { steps { ... }}}` (caused "NoSuchMethodError: steps")
-
 pipeline {
   agent none
 
   options {
-    timestamps()
-    ansiColor('xterm')
+    // Compatible with your Jenkins (options list shows "wrap" is valid)
+    wrap([$class: 'TimestamperBuildWrapper'])
+    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm'])
+
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
   }
@@ -26,15 +21,14 @@ pipeline {
     BACKEND_IMAGE     = "${REGISTRY}/final-project-backend"
     FRONTEND_IMAGE    = "${REGISTRY}/final-project-frontend"
 
-    // K8s manifests paths (your repo layout)
     RBAC_FILE         = 'devops-infra/kubernetes/jenkins/jenkins-deployer-rbac.yaml'
     KUSTOMIZE_OVERLAY = "devops-infra/kustomize/overlays/${params.ENV}"
 
-    // Speed up / reduce noise
     PIP_DISABLE_PIP_VERSION_CHECK = '1'
   }
 
   stages {
+
     stage('Checkout') {
       agent {
         kubernetes {
@@ -61,7 +55,6 @@ spec:
           echo "GIT_SHA: ${sha}"
         }
 
-        // Stash everything once; later stages just unstash.
         stash name: 'src', includes: '**/*', useDefaultExcludes: false
       }
     }
@@ -118,7 +111,7 @@ spec:
           echo "Using tags: num=${env.BUILD_TAG_NUM} sha=${env.GIT_SHA}"
         }
 
-        // ---- Backend tests (Python) ----
+        // Backend tests (Python) - use venv to avoid pip permission issues
         container('python') {
           sh """
             set -eux
@@ -132,7 +125,7 @@ spec:
           """
         }
 
-        // ---- Frontend tests (Node) ----
+        // Frontend tests (Node)
         container('node') {
           sh """
             set -eux
@@ -144,7 +137,7 @@ spec:
           """
         }
 
-        // ---- Build & Push images (Kaniko) ----
+        // Build & Push images (Kaniko)
         container('kaniko') {
           sh """
             set -eux
@@ -165,7 +158,7 @@ spec:
           """
         }
 
-        // ---- Scan images (Trivy) ----
+        // Scan images (Trivy)
         script {
           if (params.RUN_TRIVY) {
             container('trivy') {
@@ -173,7 +166,6 @@ spec:
                 set -eux
                 trivy version
 
-                # keep it informative (doesn't fail build by default)
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${BACKEND_IMAGE}:${GIT_SHA} | tee trivy-backend.txt
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${FRONTEND_IMAGE}:${GIT_SHA} | tee trivy-frontend.txt
               """
@@ -216,16 +208,11 @@ spec:
         container('kubectl') {
           sh """
             set -eux
-
             echo "Deploying env=${params.ENV} namespace=${params.NAMESPACE}"
 
-            # 1) Ensure Jenkins deployer SA + RBAC exists (safe to re-apply)
             kubectl apply -f ${RBAC_FILE}
-
-            # 2) Deploy app manifests via kustomize overlay
             kubectl apply -k ${KUSTOMIZE_OVERLAY}
 
-            # Optional basic rollout checks (won't break if names differ)
             kubectl -n ${params.NAMESPACE} get all || true
           """
         }
