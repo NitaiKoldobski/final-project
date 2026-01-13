@@ -7,12 +7,13 @@ pipeline {
 
   environment {
     REGISTRY     = "ghcr.io"
-    OWNER        = "nitaikoldobski"   // MUST be lowercase for GHCR
+    OWNER        = "nitaikoldobski"   // lowercase for GHCR
     BACKEND_IMG  = "${REGISTRY}/${OWNER}/final-project-backend"
     FRONTEND_IMG = "${REGISTRY}/${OWNER}/final-project-frontend"
   }
 
   stages {
+
     stage("Checkout") {
       agent any
       steps {
@@ -34,10 +35,9 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
-  # must exist in namespace jenkins
   serviceAccountName: jenkins-deployer
 
-  # IMPORTANT: keep workspace writable across containers (fix durable task issue)
+  # keep workspace writable for durable tasks + venv
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
@@ -84,22 +84,27 @@ spec:
         script {
           env.GIT_SHA = sh(returnStdout: true, script: "cat .gitsha").trim()
           env.TAG_NUM = env.BUILD_NUMBER
+          echo "Using tags: num=${env.TAG_NUM} sha=${env.GIT_SHA}"
         }
 
-        // ---- Tests ----
+        // ---- Backend tests (use venv in workspace) ----
         container("python") {
           sh """
-            set -e
+            set -eux
             cd backend-api
             python -V
+            python -m venv .venv
+            . .venv/bin/activate
+            pip install --upgrade pip
             pip install -r requirements.txt
             echo "Backend tests placeholder ✅"
           """
         }
 
+        // ---- Frontend tests ----
         container("node") {
           sh """
-            set -e
+            set -eux
             cd frontend-app
             node -v
             npm -v
@@ -108,10 +113,10 @@ spec:
           """
         }
 
-        // ---- Build + Push (Kaniko) ----
+        // ---- Build + Push images ----
         container("kaniko") {
           sh """
-            set -e
+            set -eux
             /kaniko/executor \
               --context=dir://$WORKSPACE/backend-api \
               --dockerfile=$WORKSPACE/backend-api/Dockerfile \
@@ -123,7 +128,7 @@ spec:
 
         container("kaniko") {
           sh """
-            set -e
+            set -eux
             /kaniko/executor \
               --context=dir://$WORKSPACE/frontend-app \
               --dockerfile=$WORKSPACE/frontend-app/Dockerfile \
@@ -133,7 +138,7 @@ spec:
           """
         }
 
-        // ---- Scan (Trivy) ----
+        // ---- Trivy scan (do not fail pipeline) ----
         container("trivy") {
           sh """
             set +e
@@ -143,12 +148,8 @@ spec:
             exit 0
           """
         }
-      }
 
-      post {
-        always {
-          archiveArtifacts artifacts: "Jenkinsfile,.gitsha,devops-infra/**", allowEmptyArchive: true
-        }
+        archiveArtifacts artifacts: "Jenkinsfile,.gitsha,devops-infra/**", allowEmptyArchive: true
       }
     }
 
@@ -161,7 +162,6 @@ kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
 
-  # IMPORTANT: fix "process apparently never started"
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
@@ -172,13 +172,6 @@ spec:
     image: bitnami/kubectl:latest
     command: ["sh", "-c", "cat"]
     tty: true
-    volumeMounts:
-    - name: workspace-volume
-      mountPath: /home/jenkins/agent
-
-  volumes:
-  - name: workspace-volume
-    emptyDir: {}
 """
         }
       }
@@ -195,7 +188,11 @@ spec:
 
         container("kubectl") {
           sh """
-            set -euxo pipefail
+            set -eux
+
+            # Rollback automatically if something fails in this stage:
+            trap 'echo "Deploy failed -> rollback"; kubectl -n ${NAMESPACE} rollout undo deploy/backend || true; kubectl -n ${NAMESPACE} rollout undo deploy/frontend || true' ERR
+
             kubectl version --client=true
 
             # Your repo path:
@@ -216,24 +213,15 @@ apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
-
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
     fsGroup: 1000
-
   containers:
   - name: kubectl
     image: bitnami/kubectl:latest
     command: ["sh", "-c", "cat"]
     tty: true
-    volumeMounts:
-    - name: workspace-volume
-      mountPath: /home/jenkins/agent
-
-  volumes:
-  - name: workspace-volume
-    emptyDir: {}
 """
         }
       }
@@ -241,51 +229,12 @@ spec:
       steps {
         container("kubectl") {
           sh """
-            set -euxo pipefail
-
+            set -eux
             kubectl -n ${NAMESPACE} run curl-check --rm -i --restart=Never \
               --image=curlimages/curl:8.5.0 \
               -- curl -sSf http://backend:5000/health
 
             kubectl -n ${NAMESPACE} get pods -o wide
-          """
-        }
-      }
-    }
-  }
-
-  post {
-    failure {
-      // simple rollback
-      agent {
-        kubernetes {
-          yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins-deployer
-
-  securityContext:
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
-
-  containers:
-  - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ["sh", "-c", "cat"]
-    tty: true
-"""
-        }
-      }
-      steps {
-        container("kubectl") {
-          sh """
-            set +e
-            echo "Rolling back deployments in ${NAMESPACE:-todo}..."
-            kubectl -n ${NAMESPACE:-todo} rollout undo deploy/backend
-            kubectl -n ${NAMESPACE:-todo} rollout undo deploy/frontend
-            exit 0
           """
         }
       }
