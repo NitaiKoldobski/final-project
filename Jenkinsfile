@@ -5,9 +5,6 @@ pipeline {
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
     skipDefaultCheckout(true)
-
-    // ✅ Works even when "timestamps()" is not supported in declarative options
-    wrap([$class: 'TimestamperBuildWrapper'])
   }
 
   parameters {
@@ -200,7 +197,7 @@ spec:
   containers:
     - name: kubectl
       image: rancher/kubectl:v1.30.0
-      command: ["/usr/bin/env","sh","-c","cat"]
+      command: ["/bin/sh","-c","cat"]
       tty: true
 """
         }
@@ -239,7 +236,7 @@ spec:
   containers:
     - name: kubectl
       image: rancher/kubectl:v1.30.0
-      command: ["/usr/bin/env","sh","-c","cat"]
+      command: ["/bin/sh","-c","cat"]
       tty: true
 """
         }
