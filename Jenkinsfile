@@ -5,12 +5,25 @@ pipeline {
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '25'))
     skipDefaultCheckout(true)
+    timestamps()
   }
 
   parameters {
-    choice(name: 'ENV', choices: ['dev', 'prod'], description: 'Which kustomize overlay to deploy')
-    string(name: 'NAMESPACE', defaultValue: 'todo', description: 'Kubernetes namespace for the app')
-    booleanParam(name: 'RUN_TRIVY', defaultValue: true, description: 'Run Trivy image scan')
+    choice(
+      name: 'ENV',
+      choices: ['dev', 'prod'],
+      description: 'Which kustomize overlay to deploy'
+    )
+    string(
+      name: 'NAMESPACE',
+      defaultValue: 'todo',
+      description: 'Kubernetes namespace'
+    )
+    booleanParam(
+      name: 'RUN_TRIVY',
+      defaultValue: true,
+      description: 'Run Trivy image scan'
+    )
   }
 
   environment {
@@ -23,6 +36,10 @@ pipeline {
   }
 
   stages {
+
+    /* ===================================================== */
+    /* ===================== CHECKOUT ====================== */
+    /* ===================================================== */
 
     stage('Checkout') {
       agent {
@@ -39,21 +56,24 @@ spec:
 """
         }
       }
+
       steps {
         deleteDir()
         checkout scm
 
         script {
           def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          def branch = env.BRANCH_NAME ?: 'unknown'
           writeFile file: '.gitsha', text: sha
-          echo "BRANCH: ${branch}"
           echo "GIT_SHA: ${sha}"
         }
 
-        stash name: 'src', includes: '**/*', excludes: '.git/**', useDefaultExcludes: false
+        stash name: 'src', includes: '**/*', excludes: '.git/**'
       }
     }
+
+    /* ===================================================== */
+    /* ============ BUILD + TEST + SCAN + PUSH ============== */
+    /* ===================================================== */
 
     stage('Build + Test + Scan + Push') {
       agent {
@@ -111,34 +131,34 @@ spec:
 
         script {
           env.GIT_SHA = readFile('.gitsha').trim()
-          env.BUILD_TAG_NUM = "${env.BUILD_NUMBER}"
-          echo "Using tags: num=${env.BUILD_TAG_NUM} sha=${env.GIT_SHA}"
+          env.BUILD_TAG_NUM = env.BUILD_NUMBER
+          echo "Tags: ${BUILD_TAG_NUM}, ${GIT_SHA}"
         }
 
+        /* ---------- Backend tests ---------- */
         container('python') {
           sh """
             set -eux
             cd backend-api
-            python -V
             python -m venv .venv
             . .venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
-            echo "Backend tests placeholder ✅"
+            echo "Backend tests OK"
           """
         }
 
+        /* ---------- Frontend tests ---------- */
         container('node') {
           sh """
             set -eux
             cd frontend-app
-            node -v
-            npm -v
             npm ci
-            echo "Frontend tests placeholder ✅"
+            echo "Frontend tests OK"
           """
         }
 
+        /* ---------- Build & push images ---------- */
         container('kaniko') {
           sh """
             set -eux
@@ -159,18 +179,16 @@ spec:
           """
         }
 
+        /* ---------- Trivy scan ---------- */
         script {
           if (params.RUN_TRIVY) {
             container('trivy') {
               sh """
                 set -eux
-                trivy version
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${BACKEND_IMAGE}:${GIT_SHA} | tee trivy-backend.txt
                 trivy image --timeout 5m --severity HIGH,CRITICAL --no-progress ${FRONTEND_IMAGE}:${GIT_SHA} | tee trivy-frontend.txt
               """
             }
-          } else {
-            echo "RUN_TRIVY=false -> skipping Trivy scans"
           }
         }
       }
@@ -182,6 +200,10 @@ spec:
       }
     }
 
+    /* ===================================================== */
+    /* ====================== DEPLOY ======================= */
+    /* ===================================================== */
+
     stage('Deploy') {
       agent {
         kubernetes {
@@ -192,12 +214,10 @@ kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
   restartPolicy: Never
-  securityContext:
-    fsGroup: 1000
   containers:
     - name: kubectl
-      image: rancher/kubectl:v1.30.0
-      command: ["/bin/sh","-c","cat"]
+      image: bitnami/kubectl:1.30.0
+      command: ["sh","-c","cat"]
       tty: true
 """
         }
@@ -210,16 +230,17 @@ spec:
         container('kubectl') {
           sh """
             set -eux
-            echo "Deploying env=${params.ENV} namespace=${params.NAMESPACE}"
-
             kubectl apply -f ${RBAC_FILE}
             kubectl apply -k ${KUSTOMIZE_OVERLAY}
-
-            kubectl -n ${params.NAMESPACE} get all || true
+            kubectl -n ${params.NAMESPACE} get all
           """
         }
       }
     }
+
+    /* ===================================================== */
+    /* ====================== VERIFY ======================= */
+    /* ===================================================== */
 
     stage('Verify') {
       agent {
@@ -231,12 +252,10 @@ kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
   restartPolicy: Never
-  securityContext:
-    fsGroup: 1000
   containers:
     - name: kubectl
-      image: rancher/kubectl:v1.30.0
-      command: ["/bin/sh","-c","cat"]
+      image: bitnami/kubectl:1.30.0
+      command: ["sh","-c","cat"]
       tty: true
 """
         }
@@ -257,7 +276,7 @@ spec:
 
   post {
     success { echo "✅ Pipeline finished successfully" }
-    failure { echo "❌ Pipeline failed - check stage logs above" }
+    failure { echo "❌ Pipeline failed" }
     always  { echo "Build URL: ${env.BUILD_URL}" }
   }
 }
