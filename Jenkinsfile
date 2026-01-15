@@ -1,58 +1,48 @@
 pipeline {
-  agent { label 'kaniko' }
+  agent none
 
   environment {
-    GHCR_USER = "NitaiKoldobski"
-    REPO_URL  = "https://github.com/NitaiKoldobski/final-project.git"
-
-    BACKEND_IMAGE  = "ghcr.io/${GHCR_USER}/final-project-backend"
-    FRONTEND_IMAGE = "ghcr.io/${GHCR_USER}/final-project-frontend"
-
-    TAG = "${env.BUILD_NUMBER}"
+    REGISTRY = "ghcr.io"
+    OWNER    = "NitaiKoldobski"
+    IMAGE    = "final-project-backend"
+    TAG      = "build-${BUILD_NUMBER}"
   }
 
   stages {
-    stage('Checkout') {
-      steps {
-        container('git') {
-          withCredentials([string(credentialsId: 'github-token', variable: 'GHTOKEN')]) {
-            sh '''
-              rm -rf repo
-              git clone https://${GHTOKEN}@github.com/NitaiKoldobski/final-project.git repo
-              cd repo
-              git rev-parse --short HEAD
-            '''
-          }
+    stage("Build+Push (Kaniko)") {
+      agent {
+        kubernetes {
+          label 'kaniko'
+          defaultContainer 'kaniko'
+          yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    command: ["sleep"]
+    args: ["infinity"]
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: ghcr-docker-config
+"""
         }
       }
-    }
 
-    stage('Build & Push Backend') {
-      steps {
-        container('kaniko') {
-          sh """
-            /kaniko/executor \
-              --context=dir://repo/backend-api \
-              --dockerfile=repo/backend-api/Dockerfile \
-              --destination=${BACKEND_IMAGE}:${TAG} \
-              --destination=${BACKEND_IMAGE}:latest
-          """
-        }
-      }
-    }
-
-    stage('Build & Push Frontend') {
-      steps {
-        container('kaniko') {
-          sh """
-            /kaniko/executor \
-              --context=dir://repo/frontend-app \
-              --dockerfile=repo/frontend-app/Dockerfile \
-              --destination=${FRONTEND_IMAGE}:${TAG} \
-              --destination=${FRONTEND_IMAGE}:latest
-          """
-        }
-      }
+      stage("Checkout") {
+  steps {
+    container('kaniko') {
+      sh '''
+        apk add --no-cache git
+        rm -rf src
+        git clone https://github.com/NitaiKoldobski/final-project.git src
+        ls -la src
+      '''
     }
   }
 }
