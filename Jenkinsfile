@@ -2,18 +2,14 @@ pipeline {
   agent none
 
   environment {
-    REGISTRY = "ghcr.io"
-    OWNER    = "NitaiKoldobski"
-    IMAGE    = "final-project-backend"
-    TAG      = "build-${BUILD_NUMBER}"
+    IMAGE = "ghcr.io/nitaikoldobski/final-project-backend"
+    TAG   = "${env.BUILD_NUMBER}"
   }
 
   stages {
-    stage("Build+Push (Kaniko)") {
+    stage('Build + Push (Kaniko)') {
       agent {
         kubernetes {
-          label 'kaniko'
-          defaultContainer 'kaniko'
           yaml """
 apiVersion: v1
 kind: Pod
@@ -21,8 +17,8 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
-    command: ["sleep"]
-    args: ["infinity"]
+    command: ["sh", "-c", "cat"]
+    tty: true
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
@@ -34,15 +30,17 @@ spec:
         }
       }
 
-      stage("Checkout") {
-  steps {
-    container('kaniko') {
-      sh '''
-        apk add --no-cache git
-        rm -rf src
-        git clone https://github.com/NitaiKoldobski/final-project.git src
-        ls -la src
-      '''
+      steps {
+        container('kaniko') {
+          sh """
+            /kaniko/executor \
+              --context=dir://$WORKSPACE/backend-api \
+              --dockerfile=$WORKSPACE/backend-api/Dockerfile \
+              --destination=${IMAGE}:${TAG} \
+              --destination=${IMAGE}:latest
+          """
+        }
+      }
     }
   }
 }
